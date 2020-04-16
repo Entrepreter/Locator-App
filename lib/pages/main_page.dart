@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'dart:async';
 
@@ -20,12 +23,11 @@ class _MainPageState extends State<MainPage> {
   bool mapReady = false;
   bool isUserLoggedIn = false;
 
-  String displayName;
-  String imageUrl;
-  String UID;
+  Marker marker;
 
   LatLng pinPosition;
 
+  Location _locationTracker;
   FirebaseUser _user;
 
   final CameraPosition _center =
@@ -33,10 +35,90 @@ class _MainPageState extends State<MainPage> {
 
   Completer<GoogleMapController> _controller = Completer();
 
+  GoogleMapController _googleMapController;
+
   @override
   void initState() {
     // TODO: implement initState
     super.initState();
+    getInitialLocation();
+    getCurrentLocation();
+
+    FirebaseAuth.instance.currentUser().then((value) {
+      setState(() {
+        _user = value;
+        isUserLoggedIn = true;
+      });
+    });
+  }
+
+  LatLng _currentUserPosi;
+
+  void getInitialLocation() {
+    _locationTracker = Location.instance;
+
+    _locationTracker.getLocation().then((value) {
+      _currentUserPosi = LatLng(value.latitude, value.longitude);
+
+      CameraPosition cameraPosition =
+          CameraPosition(target: _currentUserPosi, zoom: 16.24, tilt: 25);
+      _googleMapController
+          .animateCamera(CameraUpdate.newCameraPosition(cameraPosition));
+    });
+  }
+
+  void getCurrentLocation() async {
+    try {
+      Uint8List imageData = await getMarker();
+      var location = await _locationTracker.getLocation();
+
+      updateMarker(location, imageData);
+
+      if (_locationSubscription != null) {
+        _locationSubscription.cancel();
+      }
+
+      _locationSubscription =
+          _locationTracker.onLocationChanged.listen((newLocalData) {
+        if (_controller != null) {
+          _googleMapController.animateCamera(CameraUpdate.newCameraPosition(
+              new CameraPosition(
+                  bearing: 192.8334901395799,
+                  target: LatLng(newLocalData.latitude, newLocalData.longitude),
+                  tilt: 0,
+                  zoom: 18.00)));
+          updateMarker(newLocalData, imageData);
+        }
+      });
+    } on PlatformException catch (e) {
+      if (e.code == 'PERMISSION_DENIED') {
+        debugPrint("Permission Denied");
+      }
+    }
+  }
+
+  StreamSubscription _locationSubscription;
+
+  @override
+  void dispose() {
+    if (_locationSubscription != null) {
+      _locationSubscription.cancel();
+    }
+    super.dispose();
+  }
+
+  void updateMarker(LocationData newLocalData, Uint8List imageData) {
+    LatLng latlng = LatLng(newLocalData.latitude, newLocalData.longitude);
+    this.setState(() {
+      marker = Marker(
+          markerId: MarkerId("current_user"),
+          infoWindow: InfoWindow(title: _user.displayName),
+          position: latlng,
+//          rotation: newLocalData.heading,
+          draggable: false,
+          zIndex: 2,
+          icon: BitmapDescriptor.fromBytes(imageData));
+    });
   }
 
   @override
@@ -76,14 +158,14 @@ class _MainPageState extends State<MainPage> {
                             builder: (context) => ProfilePage(_user))),
                 child: CircleAvatar(
                   backgroundColor: Colors.white,
-                  child: imageUrl == null
+                  child: _user == null
                       ? Icon(
                           Icons.person,
                           color: Colors.grey,
                         )
                       : ClipRRect(
                           borderRadius: BorderRadius.circular(24),
-                          child: Image.network(imageUrl),
+                          child: Image.network(_user.photoUrl),
                         ),
                 ),
               ),
@@ -96,7 +178,7 @@ class _MainPageState extends State<MainPage> {
             color: Colors.white,
             onPressed: () => isUserLoggedIn ? null : signInUser(),
             child: Text(
-              displayName == null ? "Login With Google" : displayName,
+              _user == null ? "Login With Google" : _user.displayName,
               style: TextStyle(color: Theme.of(context).primaryColor),
             ),
           ),
@@ -144,9 +226,6 @@ class _MainPageState extends State<MainPage> {
 
         setState(() {
           _user = value;
-          displayName = value.displayName;
-          UID = value.uid;
-          imageUrl = value.photoUrl;
           isUserLoggedIn = true;
         });
       }
@@ -157,10 +236,11 @@ class _MainPageState extends State<MainPage> {
     return GoogleMap(
       buildingsEnabled: true,
       indoorViewEnabled: true,
+      compassEnabled: false,
+      mapToolbarEnabled: false,
       initialCameraPosition: _center,
+      markers: Set.of((marker != null) ? [marker] : []),
       mapType: MapType.normal,
-      myLocationButtonEnabled: false,
-      myLocationEnabled: true,
       onMapCreated: onMapCreated,
     );
   }
@@ -202,8 +282,15 @@ class _MainPageState extends State<MainPage> {
 
   onMapCreated(GoogleMapController controller) {
     setState(() {
+      _googleMapController = controller;
       mapReady = true;
     });
     _controller.complete(controller);
+  }
+
+  Future<Uint8List> getMarker() async {
+    ByteData byteData =
+        await DefaultAssetBundle.of(context).load("assets/my_location.png");
+    return byteData.buffer.asUint8List();
   }
 }
