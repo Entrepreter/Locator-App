@@ -33,6 +33,8 @@ dependencies:
   firebase_auth: ^0.16.0
   google_sign_in: ^4.4.1
   location: ^3.0.0
+  cloud_firestore: ^0.13.5
+  timeago: ^2.0.26
 
 
 dev_dependencies:

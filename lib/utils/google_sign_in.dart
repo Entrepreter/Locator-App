@@ -34,11 +34,14 @@ class SignInHelper {
     return user;
   }
 
-  static void signOutGoogle() async {
-    await _googleSignIn.signOut().then((value) {
-      isUserLoggedIn = false;
+  static Future<bool> signOutGoogle() async {
+    await _googleSignIn.signOut().then((account) {
+      print("signed out");
+      return true;
+    }).catchError((e) {
+      return false;
     });
 
-    print("User Sign Out");
+    return false;
   }
 }

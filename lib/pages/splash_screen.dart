@@ -1,7 +1,9 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:location/location.dart';
-import 'package:locator/pages/home_page.dart';
-import 'package:locator/pages/main_page.dart';
+
+import 'ErrorPage.dart';
+import 'map_page.dart';
 
 class SplashScreen extends StatefulWidget {
   @override
@@ -11,23 +13,64 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
-    // TODO: implement initState
     super.initState();
-    Location location = Location.instance;
-    location.hasPermission().then((status) {
-      if (status == PermissionStatus.granted) {
-        location.serviceEnabled().then((enabled) {
-          if (enabled) {
-            Navigator.pushReplacement(
-                context, MaterialPageRoute(builder: (context) => MainPage()));
+    initApp();
+  }
+
+  void initApp() {
+    Location _location = Location.instance;
+
+    _location.hasPermission().then((value) {
+      if (value == PermissionStatus.granted) {
+        //our app already has location permission
+        haveLocationPermission(_location);
+      } else {
+        //doesn't have the permission
+        //ask user the location permissions
+        _location.requestPermission().then((value) {
+          if (value == PermissionStatus.granted) {
+            //now we have location permission
+            haveLocationPermission(_location);
           } else {
             Navigator.pushReplacement(
-                context, MaterialPageRoute(builder: (context) => HomePage()));
+                context,
+                MaterialPageRoute(
+                    builder: (context) => ErrorPage(
+                        "This App Won't work with location permissions")));
           }
         });
-      } else {
+      }
+    }).catchError((e) {
+      Scaffold.of(context).showSnackBar(SnackBar(
+        content: Text(e.toString()),
+      ));
+    });
+  }
+
+  void haveLocationPermission(Location _location) {
+    _location.serviceEnabled().then((value) {
+      if (value) {
+        //service is enable, continue using it
         Navigator.pushReplacement(
-            context, MaterialPageRoute(builder: (context) => HomePage()));
+            context, MaterialPageRoute(builder: (context) => MapPage()));
+      } else {
+        //ask for turning on the location
+        _location.requestService().then((value) => {
+              if (value)
+                {
+                  //service is turned on now can continue using the map or location
+                  Navigator.pushReplacement(context,
+                      MaterialPageRoute(builder: (context) => MapPage()))
+                }
+              else
+                {
+                  Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => ErrorPage(
+                              "This app requires location sharing on")))
+                }
+            });
       }
     });
   }
@@ -36,13 +79,43 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        color: Theme.of(context).primaryColor,
+        color: Colors.white,
         child: Center(
-            child: Text(
-          "Locator",
-          style: TextStyle(
-              fontWeight: FontWeight.bold, fontSize: 48, color: Colors.white),
-        )),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                color: Colors.white,
+                width: 124,
+                height: 124,
+                child: Image.asset('assets/images/location_sharing_off.png'),
+              ),
+              RichText(
+                text: TextSpan(
+                  text: 'L',
+                  style: TextStyle(
+                      color: Colors.black54,
+                      fontSize: 48,
+                      fontWeight: FontWeight.w300),
+                  children: <TextSpan>[
+                    TextSpan(
+                        text: 'o',
+                        style: TextStyle(
+//                            fontWeight: FontWeight.w500,
+                            color: Theme.of(context).primaryColor)),
+                    TextSpan(text: 'cat'),
+                    TextSpan(
+                        text: 'o',
+                        style: TextStyle(
+//                            fontWeight: FontWeight.w500,
+                            color: Theme.of(context).primaryColor)),
+                    TextSpan(text: 'r'),
+                  ],
+                ),
+              )
+            ],
+          ),
+        ),
       ),
     );
   }
