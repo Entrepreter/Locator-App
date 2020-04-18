@@ -35,7 +35,8 @@ dependencies:
   location: ^3.0.0
   cloud_firestore: ^0.13.5
   timeago: ^2.0.26
-
+  network_image_to_byte: ^0.0.1
+  flutter_polyline_points:
 
 dev_dependencies:
   flutter_test:

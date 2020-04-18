@@ -7,8 +7,14 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
+import 'package:locator/model/users.dart';
+import 'package:network_image_to_byte/network_image_to_byte.dart';
+
+import 'package:timeago/timeago.dart' as timeAgo;
+
 import 'package:locator/utils/database_helper.dart';
 import 'package:locator/utils/google_sign_in.dart';
+import 'package:locator/utils/my_behaviour.dart';
 
 class MapPage extends StatefulWidget {
   @override
@@ -26,10 +32,15 @@ class _MapPageState extends State<MapPage> {
   Set<Marker> _markers = {};
 
   FirebaseUser _user;
+  User _currentUser;
 
   LatLng _previousLatLng;
 
   Timer timer;
+
+  StreamSubscription otherUsersStreams;
+
+  bool isLoading = false;
 
   @override
   void initState() {
@@ -38,6 +49,7 @@ class _MapPageState extends State<MapPage> {
       if (value != null) {
         setState(() {
           _user = value;
+          _currentUser = User(_user.displayName, _user.photoUrl, _user.uid);
         });
       }
     });
@@ -61,6 +73,7 @@ class _MapPageState extends State<MapPage> {
           children: [
             buildGoogleMap(),
             buildLoginTile(),
+            isLoading ? buildLoadingWidget() : Container(),
           ],
         ),
       ),
@@ -77,6 +90,36 @@ class _MapPageState extends State<MapPage> {
     timer?.cancel();
   }
 
+  Widget buildLoadingWidget() {
+    return Container(
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              child: FloatingActionButton(
+                  mini: true,
+                  onPressed: () {},
+                  backgroundColor: Colors.white,
+                  child: CircularProgressIndicator()),
+            ),
+            SizedBox(
+              height: 2,
+            ),
+            Container(
+              padding: EdgeInsets.all(4),
+              child: Text(
+                "Getting location...",
+                style: TextStyle(color: Colors.white),
+              ),
+              color: Colors.black.withOpacity(0.30),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
   //widgets method
   Widget buildGoogleMap() {
     final _initialMapPosition =
@@ -86,6 +129,7 @@ class _MapPageState extends State<MapPage> {
       initialCameraPosition: _initialMapPosition,
       onMapCreated: onMapCreated,
       markers: _markers,
+      compassEnabled: false,
       mapToolbarEnabled: false,
     );
   }
@@ -98,45 +142,56 @@ class _MapPageState extends State<MapPage> {
 //          color: Colors.white,
           child: Row(
             children: [
-              Container(
-                padding: EdgeInsets.all(4),
-                color: Colors.white,
-                child: CircleAvatar(
-                    radius: 16,
-                    backgroundColor:
-                        Theme.of(context).primaryColor.withOpacity(0.2),
-                    child: _user == null
-                        ? Icon(
-                            Icons.person,
-                            color: Colors.grey,
-                          )
-                        : Container(
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(24),
-                              child: Image.network(_user.photoUrl),
-                            ),
-                          )),
+              Material(
+                elevation: 1,
+                child: Container(
+                  padding: EdgeInsets.all(4),
+                  color: Colors.white,
+                  child: CircleAvatar(
+                      radius: 16,
+                      backgroundColor:
+                          Theme.of(context).primaryColor.withOpacity(0.2),
+                      child: _currentUser == null
+                          ? Icon(
+                              Icons.person,
+                              color: Colors.grey,
+                            )
+                          : Container(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(24),
+                                child: Image.network(_currentUser.photoUrl),
+                              ),
+                            )),
+                ),
               ),
               InkWell(
-                onTap: _user == null
+                onTap: _currentUser == null
                     ? () {
                         signAndLogInDb();
                         setState(() {});
                       }
                     : null,
-                child: Container(
-                  padding: EdgeInsets.all(12),
-                  color: Colors.white,
-                  child: Text(
-                    _user == null ? "Login with google" : _user.displayName,
-                    style: TextStyle(color: Theme.of(context).primaryColor),
+                child: Material(
+                  elevation: 1,
+                  child: Container(
+                    padding: EdgeInsets.all(12),
+                    color: Colors.white,
+                    child: Text(
+                      _user == null
+                          ? "Login with google"
+                          : _currentUser.displayName,
+                      style: TextStyle(color: Theme.of(context).primaryColor),
+                    ),
                   ),
                 ),
               ),
-              Container(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text("|"),
-                color: Colors.white,
+              Material(
+                elevation: 1,
+                child: Container(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text("|"),
+                  color: Colors.white,
+                ),
               ),
               InkWell(
                 onTap: () {
@@ -144,31 +199,43 @@ class _MapPageState extends State<MapPage> {
                   FirebaseAuth.instance.currentUser().then((value) {
                     setState(() {
                       _user = value;
+                      _currentUser =
+                          User(_user.displayName, _user.photoUrl, _user.uid);
                     });
                   });
                   setState(() {});
                 },
-                child: Container(
-                  padding: EdgeInsets.all(12),
-                  color: Colors.white,
-                  child: Text(
-                    "Logout",
+                child: Material(
+                  elevation: 1,
+                  child: Container(
+                    padding: EdgeInsets.all(12),
+                    color: Colors.white,
+                    child: Text(
+                      "Logout",
+                    ),
                   ),
                 ),
               ),
               Spacer(),
-              InkWell(
-                onTap: () {
-                  showOnlineUsers();
-                },
-                child: Container(
-                    padding: EdgeInsets.all(6),
-                    color: Theme.of(context).primaryColor,
-                    child: Icon(
-                      Icons.share,
-                      color: Colors.white,
-                    )),
-              ),
+              Builder(builder: (context) {
+                return InkWell(
+                  onTap: () {
+                    _currentUser == null
+                        ? showSnackBar(context)
+                        : showOnlineUsers();
+                  },
+                  child: Material(
+                    elevation: 1,
+                    child: Container(
+                        padding: EdgeInsets.all(6),
+                        color: Theme.of(context).primaryColor,
+                        child: Icon(
+                          Icons.share,
+                          color: Colors.white,
+                        )),
+                  ),
+                );
+              }),
             ],
           )),
     );
@@ -177,10 +244,11 @@ class _MapPageState extends State<MapPage> {
   Future signAndLogInDb() async {
     FirebaseUser user = await SignInHelper.signInWithGoogle();
     _user = user;
+    _currentUser = User(_user.displayName, _user.photoUrl, _user.uid);
     Firestore.instance.collection('users').document(_user.uid).setData({
-      'user_name': _user.displayName,
-      'photo_url': _user.photoUrl,
-      'public_id': _user.uid.substring(0, 6)
+      'user_name': _currentUser.displayName,
+      'photo_url': _currentUser.photoUrl,
+      'public_id': _currentUser.uid.substring(0, 6)
     });
     setState(() {});
   }
@@ -203,16 +271,16 @@ class _MapPageState extends State<MapPage> {
   getInitialPosition() async {
     _currentUserLocationData = await _locationTracker.getLocation();
 
-    writeDataToDb(_currentUserLocationData);
-
+    if (_currentUser != null) {
+      writeDataToDb(_currentUserLocationData);
+    }
     _previousLatLng = LatLng(
         double.parse(
             _currentUserLocationData.latitude.toStringAsExponential(2)),
         double.parse(
             _currentUserLocationData.longitude.toStringAsExponential(2)));
     moveToMyPosition(_currentUserLocationData);
-    addMarkerToMyLocation(_currentUserLocationData);
-    addMarkerToMyLocation(_currentUserLocationData);
+    addMarkerToMyLocation(_currentUserLocationData, _currentUser);
   }
 
   void lookLocationChange() {
@@ -222,7 +290,7 @@ class _MapPageState extends State<MapPage> {
     }
     _locationSubs =
         _locationTracker.onLocationChanged.listen((newLocationData) {
-      if (_user != null) {
+      if (_currentUser != null) {
         timer = new Timer.periodic(const Duration(minutes: 1), (t) {
           //changed 6 digit after decimal of  double to String, then again double
           LatLng currentLatLng = LatLng(
@@ -237,19 +305,34 @@ class _MapPageState extends State<MapPage> {
       }
       setState(() {
         _currentUserLocationData = newLocationData;
-        addMarkerToMyLocation(_currentUserLocationData);
+        addMarkerToMyLocation(_currentUserLocationData, _currentUser);
       });
     });
   }
 
-  addMarkerToMyLocation(LocationData data) async {
-    Uint8List imageData = await getMarker(true);
+  addMarkerToMyLocation(LocationData data, User user) async {
+    Uint8List imageData;
+    if (user == null) {
+      imageData = await getMarker(true);
+    } else {
+      if (user.uid == _user.uid) {
+        imageData = await getMarker(true);
+      } else {
+        imageData = await getMarker(false);
+      }
+    }
+    DateTime time =
+        DateTime.fromMicrosecondsSinceEpoch((data.time * 1000).toInt());
     LatLng posi = LatLng(data.latitude, data.longitude);
     setState(() {
       _markers.add(Marker(
           position: posi,
-          markerId: MarkerId("user_current_uid"),
-          infoWindow: InfoWindow(title: "user name", snippet: "a time ago"),
+          markerId: MarkerId(user == null ? "Anonymous" : user.uid),
+          infoWindow: InfoWindow(
+              title: user == null
+                  ? "Anonymous"
+                  : user.uid == _currentUser.uid ? "You" : user.displayName,
+              snippet: timeAgo.format(time)),
           icon: BitmapDescriptor.fromBytes(imageData)));
     });
   }
@@ -264,7 +347,7 @@ class _MapPageState extends State<MapPage> {
   writeDataToDb(LocationData data) {
     Firestore.instance
         .collection('users')
-        .document(_user.uid)
+        .document(_currentUser.uid)
         .collection('location_paths')
         .add(DatabaseHelper.locationDataToMap(data));
   }
@@ -274,12 +357,13 @@ class _MapPageState extends State<MapPage> {
         context: context,
         builder: (context) {
           return Container(
+            color: Colors.white,
             height: MediaQuery.of(context).size.height * 0.30,
             child: Column(
               children: [
                 ListTile(
                   title: Text(
-                    "Online Users",
+                    "All Users",
                     style: TextStyle(color: Theme.of(context).primaryColor),
                   ),
                   trailing: InkWell(
@@ -298,50 +382,52 @@ class _MapPageState extends State<MapPage> {
                     if (snap.hasData) {
                       var docs = snap.data.documents;
                       if (docs.length > 1) {
-                        return ListView.builder(
-                            shrinkWrap: true,
-                            itemCount: docs.length,
-                            itemBuilder: (context, index) {
-                              DocumentSnapshot ref = docs[index];
-                              if (ref.documentID == _user.uid)
-                                return Container();
-                              else
-                                return ListTile(
-                                  title: Text(docs[index]['user_name']),
-                                  leading: Container(
-                                    child: CircleAvatar(
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(24),
-                                        child: Image.network(
-                                            docs[index]['photo_url']),
-                                      ),
-                                    ),
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      InkWell(
-                                        child: Container(
-                                          child: Text("Ask"),
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        width: 16,
-                                      ),
-                                      InkWell(
-                                        child: Container(
-                                          child: Text(
-                                            "Share",
-                                            style: TextStyle(
-                                                color: Theme.of(context)
-                                                    .primaryColor),
+                        return Expanded(
+                          child: ScrollConfiguration(
+                            behavior: MyBehavior(),
+                            child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: docs.length,
+                                itemBuilder: (context, index) {
+                                  DocumentSnapshot ref = docs[index];
+                                  if (ref.documentID == _currentUser.uid) {
+                                    return Container();
+                                  } else {
+                                    var photoUrl = docs[index]['photo_url'];
+                                    var displayName = docs[index]['user_name'];
+                                    var uid = docs[index].documentID;
+
+                                    User user =
+                                        User(displayName, photoUrl, uid);
+                                    return ListTile(
+                                      title: Text(displayName),
+                                      leading: Container(
+                                        child: CircleAvatar(
+                                          radius: 16,
+                                          child: ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(24),
+                                            child: Image.network(photoUrl),
                                           ),
                                         ),
-                                      )
-                                    ],
-                                  ),
-                                );
-                            });
+                                      ),
+                                      trailing: FlatButton(
+                                        padding: EdgeInsets.all(8),
+                                        onPressed: () {
+                                          updateOthersMarker(context, user);
+                                        },
+                                        child: Text(
+                                          "Ask",
+                                          style: TextStyle(
+                                              color: Theme.of(context)
+                                                  .primaryColor),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                }),
+                          ),
+                        );
                       } else {
                         return Center(
                           child: Text("No user online"),
@@ -359,5 +445,46 @@ class _MapPageState extends State<MapPage> {
             ),
           );
         });
+  }
+
+  void updateOthersMarker(BuildContext context, User user) {
+    Navigator.pop(context);
+    setState(() {
+      isLoading = true;
+    });
+    if (otherUsersStreams != null) {
+      otherUsersStreams.cancel();
+    }
+    otherUsersStreams = Firestore.instance
+        .collection('users')
+        .document('edc1ohBBI1ZAVftYL4Xxjl8dlkV2')
+        .collection('location_paths')
+        .orderBy('time', descending: true)
+        .limit(1)
+        .snapshots()
+        .listen((e) {
+      setState(() {
+        isLoading = false;
+      });
+      if (e.documents.length > 0) {
+        LocationData locationData =
+            LocationData.fromMap((e.documents[0].data).cast<String, double>());
+
+        addMarkerToMyLocation(locationData, user);
+      }
+    });
+  }
+
+  showSnackBar(context) {
+    SnackBar snackBar = SnackBar(
+      content: Text("For sharing locations, login is required"),
+      action: SnackBarAction(
+        label: "Login",
+        onPressed: () {
+          signAndLogInDb();
+        },
+      ),
+    );
+    Scaffold.of(context).showSnackBar(snackBar);
   }
 }
